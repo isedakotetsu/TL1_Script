@@ -1,6 +1,10 @@
+import gpu
+import gpu_extras.batch
 import bpy
 import math
 import bpy_extras
+import copy
+
 
 
 bl_info = {
@@ -23,6 +27,80 @@ def draw_menu_manual(self, context):
 
     #トップバーの「エディターメニュー」に項目（オペレーター）を追加
     self.layout.operator("wm.url_open_preset",text="Manual",icon='HELP')
+
+#コライダー描画
+class DrawCollider:
+
+    #描画ハンドル
+    handle = None
+    #3Dビューに登録する描画関数
+    def draw_collider():
+        #頂点データ
+        vertices = {"pos":[]}
+        #インデックスデータ
+        indices = []
+
+        #各頂点の、オブジェクト中心からのオフセット
+        offsets = [
+                   [-0.5,-0.5,-0.5],  #左下前
+                   [+0.5,-0.5,-0.5],  #右下前
+                   [-0.5,+0.5,-0.5],  #左上前
+                   [+0.5,+0.5,-0.5],  #右上前
+                   [-0.5,-0.5,+0.5],  #左下奥
+                   [+0.5,-0.5,+0.5],  #右下奥
+                   [-0.5,+0.5,+0.5],  #左上奥
+                   [+0.5,+0.5,+0.5],  #右上奥
+        ]
+
+        #立方体のX,Y,Z方向サイズ
+        size = [2,2,2]
+
+        #現在シーンのオブジェクトリストを走査
+        for object in bpy.context.scene.objects:
+
+            #追加前の頂点数
+            start = len(vertices["pos"])
+
+            #Boxの8頂点分回す
+            for offset in offsets:
+                #オブジェクトの中心座標をコピー
+                pos = copy.copy(object.location)
+                #中心座標を基準に各頂点ごとにずらす
+                pos[0] += offset[0] * size[0]
+                pos[1] += offset[1] * size[1]
+                pos[2] += offset[2] * size[2]
+                #頂点データリストに座標を追加
+                vertices["pos"].append(pos)
+                #前面を構成する辺の頂点インデックス
+                indices.append([start+0, start+1])
+                indices.append([start+2, start+3])
+                indices.append([start+0, start+2])
+                indices.append([start+1, start+3])
+
+                #奥面を構成する辺の頂点インデックス
+                indices.append([start+4, start+5])
+                indices.append([start+6, start+7])
+                indices.append([start+4, start+6])
+                indices.append([start+5, start+7])
+
+                #手前と奥を繋ぐ辺の頂点インデックス
+                indices.append([start+0, start+4])
+                indices.append([start+1, start+5])
+                indices.append([start+2, start+6])
+                indices.append([start+3, start+7])
+
+        #ビルトインのシェーダを取得
+        shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+
+        #バッチを作成（引数シェーダ、トポロジー、頂点データ、インデックスデータ）
+        batch = gpu_extras.batch.batch_for_shader(shader, "LINES", vertices, indices = indices)
+
+        #シェーダのパラメータ設定
+        color = [0.5, 1.0, 1.0, 1.0]
+        shader.bind()
+        shader.uniform_float("color", color)
+        #描画
+        batch.draw(shader)
 
 #トップバーの拡張メニュー
 class TOPBAR_MT_my_menu(bpy.types.Menu):
@@ -140,22 +218,7 @@ class MYADDON_OT_export_scene(bpy.types.Operator, bpy_extras.io_utils.ExportHelp
         for child in object.children:
             self.parse_scene_recursive(file, child, level + 1)
 
-        # オブジェクト名書き込み
-        """self.write_and_print(file, indent +  object.type + " " + object.name)
-        trans, rot, scale = object.matrix_local.decompose()
-        # 回転を Quaternion から Euler (3軸での回転) に変換
-        rot = rot.to_euler()
-
-        # ラジアンから度数法に変換
-        rot.x = math.degrees(rot.x)
-        rot.y = math.degrees(rot.y)
-        rot.z = math.degrees(rot.z)
-
-        # トランスフォーム情報を表示
-        self.write_and_print(file, indent + "Trans(%f,%f,%f)" % (trans.x, trans.y, trans.z))
-        self.write_and_print(file, indent + "Rot(%f,%f,%f)" % (rot.x, rot.y, rot.z))
-        self.write_and_print(file, indent + "Scale(%f,%f,%f)" % (scale.x, scale.y, scale.z))
-        self.write_and_print(file, '')"""
+        
 
     def write_and_print(self, file, str):
         print(str)
@@ -209,24 +272,9 @@ class MYADDON_OT_export_scene(bpy.types.Operator, bpy_extras.io_utils.ExportHelp
 
         #ファイルに出力
         self.export()
-        """
+        
 
-        #シーン内の全オブジェクトについて
-        for object in bpy.context.scene.objects:
-            print(object.type + " : " + object.name)
-             #ローカルトランスフォーム行列から平行移動、回転、スケーリングを抽出
-            #型は Vector, Quaternion, Vector
-            trans, rot, scale = object.matrix_local.decompose()
-            #回転を Quaternion から Euler（3軸での回転角）に変換
-            rot = rot.to_euler()
-            #ラジアンから度数法に変換
-            rot.x = math.degrees(rot.x)
-            rot.y = math.degrees(rot.y)
-            rot.z = math.degrees(rot.z)
-            #トランスフォーム情報を表示
-            print("Trans(%f,%f,%f)" % (trans.x, trans.y, trans.z))
-            print("Rot(%f,%f,%f)" % (rot.x, rot.y, rot.z))
-            print("Scale(%f,%f,%f)" % (scale.x, scale.y, scale.z))"""
+       
 
         print("シーン情報をExportしました")
         self.report({'INFO'}, "シーン情報をExportしました")
@@ -288,12 +336,15 @@ def register():
         bpy.utils.register_class(cls)
     #メニューに項目を追加
     bpy.types.TOPBAR_MT_editor_menus.append(TOPBAR_MT_my_menu.submenu)
+    DrawCollider.handle = bpy.types.SpaceView3D.draw_handler_add(DrawCollider.draw_collider, (), "WINDOW", "POST_VIEW")
     print("レベルエディタが有効化されました")
     
 #アドオン無効化時コールバック
 def unregister():
     #メニューに項目を消除
     bpy.types.TOPBAR_MT_editor_menus.remove(TOPBAR_MT_my_menu.submenu)
+    #3Dビューから描画関数を削除
+    bpy.types.SpaceView3D.draw_handler_remove(DrawCollider.handle, "WINDOW")
     #blenderにクラス消除
     for cls in classes:
         bpy.utils.unregister_class(cls)
