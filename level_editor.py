@@ -4,6 +4,7 @@ import bpy
 import math
 import bpy_extras
 import copy
+import mathutils
 
 
 
@@ -27,6 +28,7 @@ def draw_menu_manual(self, context):
 
     #トップバーの「エディターメニュー」に項目（オペレーター）を追加
     self.layout.operator("wm.url_open_preset",text="Manual",icon='HELP')
+
 
 #コライダー描画
 class DrawCollider:
@@ -57,6 +59,22 @@ class DrawCollider:
 
         #現在シーンのオブジェクトリストを走査
         for object in bpy.context.scene.objects:
+            
+            #コライダープロパティがなければ　描画をスキップ
+            if not "collider" in object:
+                continue
+
+            #中心点、サイズの変数を宣言
+            center = mathutils.Vector((0,0,0))
+            size = mathutils.Vector((2,2,2))
+
+            #プロパティから値を取得
+            center[0] = object["collider_center"][0]
+            center[1] = object["collider_center"][1]
+            center[2] = object["collider_center"][2]
+            size[0] = object["collider_size"][0]
+            size[1] = object["collider_size"][1]
+            size[2] = object["collider_size"][2]
 
             #追加前の頂点数
             start = len(vertices["pos"])
@@ -64,11 +82,13 @@ class DrawCollider:
             #Boxの8頂点分回す
             for offset in offsets:
                 #オブジェクトの中心座標をコピー
-                pos = copy.copy(object.location)
+                pos = copy.copy(center)
                 #中心座標を基準に各頂点ごとにずらす
                 pos[0] += offset[0] * size[0]
                 pos[1] += offset[1] * size[1]
                 pos[2] += offset[2] * size[2]
+                #ローカル座標からワールド座標に変換
+                pos = object.matrix_world @ pos
                 #頂点データリストに座標を追加
                 vertices["pos"].append(pos)
                 #前面を構成する辺の頂点インデックス
@@ -297,10 +317,14 @@ class OBJECT_PT_file_name(bpy.types.Panel):
         if "file_name" in context.object:
             #すでにプロパティがあれば、プロパティを表示
             self.layout.prop(context.object, '["file_name"]', text=self.bl_label)
+            
+        
         else:
             #プロパティがなければ、プロパティ追加ボタンを表示
             self.layout.operator(MYADDON_OT_add_filename.bl_idname)
+            self.layout.operator(MYADDON_OT_add_collider.bl_idname)
         
+            
 #オペレータ カスタムプロパティ['file_name']追加
 class MYADDON_OT_add_filename(bpy.types.Operator):
     bl_idname = "myaddon.myaddon_ot_add_filename"
@@ -314,7 +338,43 @@ class MYADDON_OT_add_filename(bpy.types.Operator):
         context.object["file_name"] = ""
 
         return {"FINISHED"}
-    
+
+#オペレーターCUSTOMプロパティ追加
+class MYADDON_OT_add_collider(bpy.types.Operator):
+    bl_idname = "myaddon.myaddon_ot_add_collider"
+    bl_label = "コライダー 追加"
+    bl_description = "['collider']カスタムプロパティを追加します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+
+        #['collider']カスタムプロパティを追加
+        context.object["collider"] = "BOX"
+        context.object["collider_center"] = mathutils.Vector((0,0,0))
+        context.object["collider_size"] = mathutils.Vector((2,2,2))
+
+        return {"FINISHED"}
+
+#パネル　コライダー
+class OBJECT_PT_collider(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_collider"
+    bl_label = "Collider"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    # サブメニューの描画
+    def draw(self, context):
+
+        # パネルに項目を追加
+        if "collider" in context.object:
+            #既にプロパティがあれば、プロパティを表示
+            self.layout.prop(context.object, '["collider"]', text="Type")
+            self.layout.prop(context.object, '["collider_center"]', text="Center")
+            self.layout.prop(context.object, '["collider_size"]', text="Size")
+        else:
+            #プロパティがなければ、プロパティ追加ボタンを表示
+            self.layout.operator(OBJECT_PT_collider.bl_idname)
     
 #blenderに登録するクラスリスト
 classes = (
@@ -324,6 +384,8 @@ classes = (
     TOPBAR_MT_my_menu,
     MYADDON_OT_add_filename,
     OBJECT_PT_file_name,
+    MYADDON_OT_add_collider,
+    OBJECT_PT_collider,
 )
 
 
